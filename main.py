@@ -19,6 +19,7 @@ GREEN = (0, 255, 0)
 YELLOW = (255, 255, 0)
 BLACK = (0, 0, 0)
 GOLD = (255, 215, 0)
+PURPLE = (128, 0, 128)
 
 font = pygame.font.SysFont(None, 36)
 
@@ -38,6 +39,9 @@ class Player(pygame.sprite.Sprite):
         self.scroll_offset = 0
         self.health = 3
         self.score = 0
+        self.level = 1
+        self.power_up_active = False
+        self.power_up_time = 0
 
     def update(self):
         self.speed_y += self.gravity
@@ -58,17 +62,22 @@ class Player(pygame.sprite.Sprite):
         else:
             self.scroll_offset = 0
 
+        if self.power_up_active:
+            if pygame.time.get_ticks() - self.power_up_time > 5000:
+                self.power_up_active = False
+                self.image.fill(RED)
+
     def jump(self):
         if not self.is_jumping:
             self.speed_y = self.jump_strength
             self.is_jumping = True
 
     def move_left(self):
-        self.speed_x = -5
+        self.speed_x = -7 if self.power_up_active else -5
         self.is_facing_right = False
 
     def move_right(self):
-        self.speed_x = 5
+        self.speed_x = 7 if self.power_up_active else 5
         self.is_facing_right = True
 
     def stop(self):
@@ -84,6 +93,20 @@ class Player(pygame.sprite.Sprite):
     def collect_coin(self, coin):
         self.score += 1
         coin.kill()
+        if self.score % 10 == 0:
+            self.level_up()
+
+    def level_up(self):
+        self.level += 1
+        for _ in range(self.level):
+            enemy = Enemy(random.randint(0, WIDTH), random.randint(0, HEIGHT // 2), self.level)
+            enemies.add(enemy)
+            all_sprites.add(enemy)
+
+    def activate_power_up(self):
+        self.power_up_active = True
+        self.power_up_time = pygame.time.get_ticks()
+        self.image.fill(PURPLE)
 
 class Platform(pygame.sprite.Sprite):
     def __init__(self, x, y, width, height):
@@ -98,14 +121,16 @@ class Platform(pygame.sprite.Sprite):
         self.rect.x -= offset
 
 class Enemy(pygame.sprite.Sprite):
-    def __init__(self, x, y):
+    def __init__(self, x, y, level):
         super().__init__()
         self.image = pygame.Surface((40, 40))
         self.image.fill(YELLOW)
         self.rect = self.image.get_rect()
         self.rect.x = x
         self.rect.y = y
-        self.speed_x = random.choice([-3, 3])
+        self.speed_x = random.choice([-3, 3]) * level
+        self.shoot_time = pygame.time.get_ticks()
+        self.shoot_delay = max(1000, 3000 - (level * 200))
 
     def update(self, offset):
         self.rect.x += self.speed_x - offset
@@ -115,11 +140,50 @@ class Enemy(pygame.sprite.Sprite):
         if random.random() < 0.01:
             self.speed_x *= -1
 
+        if pygame.time.get_ticks() - self.shoot_time > self.shoot_delay:
+            self.shoot()
+            self.shoot_time = pygame.time.get_ticks()
+
+    def shoot(self):
+        if random.random() < 0.5:
+            projectile = Projectile(self.rect.centerx, self.rect.bottom, self.speed_x, 5)
+            all_sprites.add(projectile)
+            projectiles.add(projectile)
+
 class Coin(pygame.sprite.Sprite):
     def __init__(self, x, y):
         super().__init__()
         self.image = pygame.Surface((20, 20))
         self.image.fill(GOLD)
+        self.rect = self.image.get_rect()
+        self.rect.x = x
+        self.rect.y = y
+
+    def update(self, offset):
+        self.rect.x -= offset
+
+class Projectile(pygame.sprite.Sprite):
+    def __init__(self, x, y, direction, speed):
+        super().__init__()
+        self.image = pygame.Surface((10, 10))
+        self.image.fill(RED)
+        self.rect = self.image.get_rect()
+        self.rect.centerx = x
+        self.rect.centery = y
+        self.speed_x = direction
+        self.speed_y = speed
+
+    def update(self):
+        self.rect.y += self.speed_y
+        self.rect.x += self.speed_x
+        if self.rect.top > HEIGHT or self.rect.right < 0 or self.rect.left > WIDTH:
+            self.kill()
+
+class PowerUp(pygame.sprite.Sprite):
+    def __init__(self, x, y):
+        super().__init__()
+        self.image = pygame.Surface((30, 30))
+        self.image.fill(PURPLE)
         self.rect = self.image.get_rect()
         self.rect.x = x
         self.rect.y = y
@@ -146,6 +210,14 @@ def generate_coins(platforms):
             coins.append(coin)
     return coins
 
+def generate_power_ups(platforms):
+    power_ups = []
+    for platform in platforms:
+        if random.random() < 0.1:
+            power_up = PowerUp(platform.rect.centerx, platform.rect.y - 30)
+            power_ups.append(power_up)
+    return power_ups
+
 def draw_health(screen, player):
     for i in range(player.health):
         pygame.draw.rect(screen, RED, (10 + i * 40, 10, 30, 30))
@@ -154,13 +226,21 @@ def draw_score(screen, player):
     score_text = font.render(f"Score: {player.score}", True, WHITE)
     screen.blit(score_text, (WIDTH - 150, 10))
 
+def draw_level(screen, player):
+    level_text = font.render(f"Level: {player.level}", True, WHITE)
+    screen.blit(level_text, (WIDTH - 300, 10))
+
 def main():
+    global all_sprites, platforms, enemies, coins, projectiles, power_ups
+
     player = Player()
 
     all_sprites = pygame.sprite.Group()
     platforms = pygame.sprite.Group()
     enemies = pygame.sprite.Group()
     coins = pygame.sprite.Group()
+    projectiles = pygame.sprite.Group()
+    power_ups = pygame.sprite.Group()
 
     all_sprites.add(player)
 
@@ -174,8 +254,13 @@ def main():
         coins.add(coin)
         all_sprites.add(coin)
 
+    initial_power_ups = generate_power_ups(initial_platforms)
+    for power_up in initial_power_ups:
+        power_ups.add(power_up)
+        all_sprites.add(power_up)
+
     for _ in range(3):
-        enemy = Enemy(random.randint(0, WIDTH), random.randint(0, HEIGHT // 2))
+        enemy = Enemy(random.randint(0, WIDTH), random.randint(0, HEIGHT // 2), player.level)
         enemies.add(enemy)
         all_sprites.add(enemy)
 
@@ -224,6 +309,18 @@ def main():
             if pygame.sprite.collide_rect(player, coin):
                 player.collect_coin(coin)
 
+        for power_up in power_ups:
+            power_up.update(player.scroll_offset)
+            if pygame.sprite.collide_rect(player, power_up):
+                player.activate_power_up()
+                power_up.kill()
+
+        for projectile in projectiles:
+            projectile.update()
+            if pygame.sprite.collide_rect(player, projectile):
+                player.lose_health()
+                projectile.kill()
+
         for enemy in enemies:
             enemy.update(player.scroll_offset)
 
@@ -231,6 +328,7 @@ def main():
         all_sprites.draw(screen)
         draw_health(screen, player)
         draw_score(screen, player)
+        draw_level(screen, player)
         pygame.display.flip()
 
 if __name__ == "__main__":
