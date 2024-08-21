@@ -42,6 +42,8 @@ class Player(pygame.sprite.Sprite):
         self.level = 1
         self.power_up_active = False
         self.power_up_time = 0
+        self.invulnerable = False
+        self.invulnerable_time = 0
 
     def update(self):
         self.speed_y += self.gravity
@@ -67,6 +69,11 @@ class Player(pygame.sprite.Sprite):
                 self.power_up_active = False
                 self.image.fill(RED)
 
+        if self.invulnerable:
+            if pygame.time.get_ticks() - self.invulnerable_time > 3000:
+                self.invulnerable = False
+                self.image.set_alpha(255)
+
     def jump(self):
         if not self.is_jumping:
             self.speed_y = self.jump_strength
@@ -84,11 +91,15 @@ class Player(pygame.sprite.Sprite):
         self.speed_x = 0
 
     def lose_health(self):
-        self.health -= 1
-        if self.health <= 0:
-            print("Game Over")
-            pygame.quit()
-            sys.exit()
+        if not self.invulnerable:
+            self.health -= 1
+            self.invulnerable = True
+            self.invulnerable_time = pygame.time.get_ticks()
+            self.image.set_alpha(128)
+            if self.health <= 0:
+                print("Game Over")
+                pygame.quit()
+                sys.exit()
 
     def collect_coin(self, coin):
         self.score += 1
@@ -102,6 +113,13 @@ class Player(pygame.sprite.Sprite):
             enemy = Enemy(random.randint(0, WIDTH), random.randint(0, HEIGHT // 2), self.level)
             enemies.add(enemy)
             all_sprites.add(enemy)
+        if self.level % 3 == 0:
+            self.spawn_boss()
+
+    def spawn_boss(self):
+        boss = Boss(WIDTH // 2, HEIGHT // 2, self.level)
+        bosses.add(boss)
+        all_sprites.add(boss)
 
     def activate_power_up(self):
         self.power_up_active = True
@@ -191,6 +209,38 @@ class PowerUp(pygame.sprite.Sprite):
     def update(self, offset):
         self.rect.x -= offset
 
+class Boss(pygame.sprite.Sprite):
+    def __init__(self, x, y, level):
+        super().__init__()
+        self.image = pygame.Surface((100, 100))
+        self.image.fill(BLACK)
+        self.rect = self.image.get_rect()
+        self.rect.x = x
+        self.rect.y = y
+        self.health = level * 5
+        self.speed_x = 5
+        self.shoot_time = pygame.time.get_ticks()
+
+    def update(self, offset):
+        self.rect.x += self.speed_x - offset
+        if self.rect.left < 0 or self.rect.right > WIDTH:
+            self.speed_x *= -1
+
+        if pygame.time.get_ticks() - self.shoot_time > 1500:
+            self.shoot()
+            self.shoot_time = pygame.time.get_ticks()
+
+    def shoot(self):
+        for _ in range(3):
+            projectile = Projectile(self.rect.centerx, self.rect.bottom, random.choice([-3, 3]), 7)
+            all_sprites.add(projectile)
+            projectiles.add(projectile)
+
+    def lose_health(self):
+        self.health -= 1
+        if self.health <= 0:
+            self.kill()
+
 def generate_platforms():
     platforms = []
     y = 450
@@ -231,7 +281,7 @@ def draw_level(screen, player):
     screen.blit(level_text, (WIDTH - 300, 10))
 
 def main():
-    global all_sprites, platforms, enemies, coins, projectiles, power_ups
+    global all_sprites, platforms, enemies, coins, projectiles, power_ups, bosses
 
     player = Player()
 
@@ -241,6 +291,7 @@ def main():
     coins = pygame.sprite.Group()
     projectiles = pygame.sprite.Group()
     power_ups = pygame.sprite.Group()
+    bosses = pygame.sprite.Group()
 
     all_sprites.add(player)
 
@@ -323,6 +374,13 @@ def main():
 
         for enemy in enemies:
             enemy.update(player.scroll_offset)
+
+        for boss in bosses:
+            boss.update(player.scroll_offset)
+            if pygame.sprite.collide_rect(player, boss):
+                player.lose_health()
+            if pygame.sprite.spritecollide(boss, projectiles, True):
+                boss.lose_health()
 
         screen.fill(BLUE)
         all_sprites.draw(screen)
