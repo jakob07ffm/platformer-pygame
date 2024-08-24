@@ -21,3 +21,5 @@ This is an advanced 2D platformer game built using the Pygame library. The playe
 - **Right Arrow (`→`)**: Move right
 - **Spacebar**: Jump
 - **Escape**: Quit the game
+
+![](plat_screenshot.JPG)
