@@ -135,7 +135,7 @@ class Platform(pygame.sprite.Sprite):
         self.rect.x = x
         self.rect.y = y
 
-    def update(self, offset):
+    def update(self, offset=0):
         self.rect.x -= offset
 
 class Enemy(pygame.sprite.Sprite):
@@ -150,7 +150,7 @@ class Enemy(pygame.sprite.Sprite):
         self.shoot_time = pygame.time.get_ticks()
         self.shoot_delay = max(1000, 3000 - (level * 200))
 
-    def update(self, offset):
+    def update(self, offset=0):
         self.rect.x += self.speed_x - offset
         if self.rect.left < 0 or self.rect.right > WIDTH:
             self.speed_x *= -1
@@ -177,7 +177,7 @@ class Coin(pygame.sprite.Sprite):
         self.rect.x = x
         self.rect.y = y
 
-    def update(self, offset):
+    def update(self, offset=0):
         self.rect.x -= offset
 
 class Projectile(pygame.sprite.Sprite):
@@ -206,7 +206,7 @@ class PowerUp(pygame.sprite.Sprite):
         self.rect.x = x
         self.rect.y = y
 
-    def update(self, offset):
+    def update(self, offset=0):
         self.rect.x -= offset
 
 class Boss(pygame.sprite.Sprite):
@@ -221,7 +221,7 @@ class Boss(pygame.sprite.Sprite):
         self.speed_x = 5
         self.shoot_time = pygame.time.get_ticks()
 
-    def update(self, offset):
+    def update(self, offset=0):
         self.rect.x += self.speed_x - offset
         if self.rect.left < 0 or self.rect.right > WIDTH:
             self.speed_x *= -1
@@ -255,7 +255,7 @@ def generate_platforms():
 def generate_coins(platforms):
     coins = []
     for platform in platforms:
-        if random.random() < 0.5:
+        if random.random() < 0.1:
             coin = Coin(platform.rect.centerx, platform.rect.y - 30)
             coins.append(coin)
     return coins
@@ -336,7 +336,7 @@ def main():
                 if event.key == pygame.K_RIGHT and player.speed_x > 0:
                     player.stop()
 
-        all_sprites.update()
+        all_sprites.update()  # No arguments passed to update method
 
         player_collide = pygame.sprite.spritecollide(player, platforms, False)
         if player_collide:
@@ -347,8 +347,10 @@ def main():
         if pygame.sprite.spritecollideany(player, enemies):
             player.lose_health()
 
+        if pygame.sprite.spritecollideany(player, bosses):
+            player.lose_health()
+
         for platform in platforms:
-            platform.update(player.scroll_offset)
             if platform.rect.right < 0:
                 platform.kill()
                 new_platform = Platform(WIDTH, random.randint(100, HEIGHT - 100), random.randint(100, 300), 20)
@@ -356,27 +358,27 @@ def main():
                 all_sprites.add(new_platform)
 
         for coin in coins:
-            coin.update(player.scroll_offset)
             if pygame.sprite.collide_rect(player, coin):
                 player.collect_coin(coin)
 
         for power_up in power_ups:
-            power_up.update(player.scroll_offset)
             if pygame.sprite.collide_rect(player, power_up):
                 player.activate_power_up()
                 power_up.kill()
 
         for projectile in projectiles:
-            projectile.update()
             if pygame.sprite.collide_rect(player, projectile):
                 player.lose_health()
                 projectile.kill()
 
         for enemy in enemies:
-            enemy.update(player.scroll_offset)
+            if pygame.sprite.spritecollideany(enemy, platforms):
+                enemy.rect.bottom = pygame.sprite.spritecollideany(enemy, platforms).rect.top
+                enemy.speed_y = 0
+            if enemy.rect.right < 0 or enemy.rect.left > WIDTH:
+                enemy.kill()
 
         for boss in bosses:
-            boss.update(player.scroll_offset)
             if pygame.sprite.collide_rect(player, boss):
                 player.lose_health()
             if pygame.sprite.spritecollide(boss, projectiles, True):
